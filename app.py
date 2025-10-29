@@ -1,9 +1,19 @@
 import gradio as gr
+import os
 from dotenv import load_dotenv
 
-from implementation.answer import answer_question
+implementation = os.getenv("RAG_IMPLEMENTATION", "baseline")
 
-load_dotenv(override=True)
+load_dotenv(override=False)
+
+if implementation == "baseline":
+    from implementation.answer import answer_question
+else:
+    # Dynamic import for team members
+    module = __import__(f"implementation.{implementation}.answer", fromlist=["answer_question"])
+    answer_question = module.answer_question
+
+print(f" Using RAG implementation: {implementation}")
 
 
 def format_context(context):

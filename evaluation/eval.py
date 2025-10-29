@@ -1,13 +1,23 @@
 import sys
+import os
 import math
 from pydantic import BaseModel, Field
 from litellm import completion
 from dotenv import load_dotenv
 
 from evaluation.test import TestQuestion, load_tests
-from implementation.answer import answer_question, fetch_context
 
-load_dotenv(override=True)
+implementation = os.getenv("RAG_IMPLEMENTATION", "baseline")
+
+load_dotenv(override=False)
+
+if implementation == "baseline":
+    from implementation.answer import answer_question, fetch_context
+else:
+    # Dynamic import for team members
+    module = __import__(f"implementation.{implementation}.answer", fromlist=["answer_question", "fetch_context"])
+    answer_question = module.answer_question
+    fetch_context = module.fetch_context
 
 MODEL = "gpt-4.1-nano"
 db_name = "vector_db"
