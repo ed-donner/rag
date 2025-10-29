@@ -104,4 +104,4 @@ def answer_question(question: str, history: list[dict] = []) -> tuple[str, list[
     return response.content, docs
 
 
-answer_question("what is the purpose of insurellm?")
+# answer_question("what is the purpose of insurellm?")
