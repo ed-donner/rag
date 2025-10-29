@@ -34,8 +34,7 @@ Context:
 RETRIEVAL_K = 30
 RERANK_TOP_K = 12 
 
-# embeddings = HuggingFaceEmbeddings(model_name="thenlper/gte-small")
-embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-large-en-v1.5")
+embeddings = HuggingFaceEmbeddings(model_name="thenlper/gte-small")
 vectorstore = Chroma(persist_directory=DB_NAME, embedding_function=embeddings)
 retriever = vectorstore.as_retriever()
 llm = ChatOpenAI(temperature=0, model_name=MODEL)
@@ -102,6 +101,3 @@ def answer_question(question: str, history: list[dict] = []) -> tuple[str, list[
     messages.append(HumanMessage(content=question)) 
     response = llm.invoke(messages)
     return response.content, docs
-
-
-# answer_question("what is the purpose of insurellm?")

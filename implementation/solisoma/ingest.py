@@ -14,8 +14,7 @@ MODEL = "gpt-4.1-nano"
 DB_NAME = str(Path(__file__).parent.parent / "vector_db")
 KNOWLEDGE_BASE = str(Path(__file__).parent.parent / "knowledge-base")
 
-# embeddings = HuggingFaceEmbeddings(model_name="thenlper/gte-small")
-embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-large-en-v1.5")
+embeddings = HuggingFaceEmbeddings(model_name="thenlper/gte-small")
 
 load_dotenv(override=True)
 
