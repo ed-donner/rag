@@ -4,6 +4,8 @@ from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.messages import SystemMessage, HumanMessage, convert_to_messages
 from langchain_core.documents import Document
+from sentence_transformers import CrossEncoder
+import re
 
 from dotenv import load_dotenv
 
@@ -13,9 +15,12 @@ load_dotenv(override=True)
 
 MODEL = "gpt-4.1-nano"
 DB_NAME = str(Path(__file__).parent.parent / "vector_db")
-
-embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-RETRIEVAL_K = 30
+FILLER_WORDS = [
+    "what is", "what are", "how to", "how do i", "tell me", "who", "when did", "how many"
+    "can you", "could you", "please", "explain", "describe",
+    "i want to know", "show me", "give me", "define", "in detail",
+    "right now", "basically", "just", "currently"
+]
 
 SYSTEM_PROMPT = """
 You are a knowledgeable, friendly assistant representing the company Insurellm.
@@ -26,35 +31,63 @@ If you don't know the answer, say so.
 Context:
 {context}
 """
+RETRIEVAL_K = 20
 
+# Changing the RERANK_TOP_K value to 9 results in a improvement in the accuracy of the answer.
+RERANK_TOP_K = 5
+
+embeddings = HuggingFaceEmbeddings(model_name="thenlper/gte-small")
 vectorstore = Chroma(persist_directory=DB_NAME, embedding_function=embeddings)
 retriever = vectorstore.as_retriever()
 llm = ChatOpenAI(temperature=0, model_name=MODEL)
+reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
 
-def fetch_context(question: str) -> list[Document]:
+def clean_q(q: str) -> str:
+    """
+    Clean the question by removing filler words and other noise.
+    """
+    q = q.lower()
+    for phrase in FILLER_WORDS:
+        q = re.sub(rf"\b{re.escape(phrase)}\b", "", q)
+    q = re.sub(r'\s+', ' ', q).strip()
+    return q
+
+
+def format_context(docs: list[Document]) -> str:
+    """
+    Combine retrieved documents into a formatted context string
+    with helpful metadata for traceability.
+    """
+    formatted = []
+    for doc in docs:
+        meta = doc.metadata
+        source = Path(meta.get("filename", "Unknown")).name
+        doc_type = meta.get("doc_type", "general")
+        chunk = meta.get("chunk_index", "?")
+
+        header = f"[Source: {source} | Type: {doc_type} | Chunk: {chunk}]"
+        formatted.append(f"{header}\n{doc.page_content.strip()}")
+
+    return "\n\n".join(formatted)
+
+
+def fetch_context(q: str) -> list[Document]:
     """
     Retrieve relevant context documents for a question.
     """
-    docs = retriever.invoke(question, k=RETRIEVAL_K)
+    query = clean_q(q)
+    
+    docs = retriever.invoke(q, k=RETRIEVAL_K)
     
     if not docs:
         return []
 
-    question_words = {
-        word.strip(".,!?").lower() for word in question.split()
-        if len(word) > 3 
-    }
+    pairs = [(query, doc.page_content) for doc in docs]
+    scores = reranker.predict(pairs)
+    ranked = sorted(zip(scores, docs), key=lambda x: x[0], reverse=True)
+    top_docs = [doc for _, doc in ranked[:RERANK_TOP_K]]
 
-    scored = []
-    for doc in docs:
-        content = doc.page_content.lower()
-        matches = sum(1 for word in question_words if word in content)
-        scored.append((matches, doc))
-
-    scored.sort(key=lambda x: x[0], reverse=True)
-
-    top_docs = [doc for _, doc in scored]
     return top_docs
 
 
@@ -63,10 +96,10 @@ def answer_question(question: str, history: list[dict] = []) -> tuple[str, list[
     Answer the given question with RAG; return the answer and the context documents.
     """
     docs = fetch_context(question)
-    context = "\n\n".join(f"[Source: {doc.metadata.get('source', 'Unknown')}]\n{doc.page_content}" for doc in docs)
-    system_prompt = SYSTEM_PROMPT.format(context=context)
+    context = format_context(docs)
+    system_prompt = SYSTEM_PROMPT.format(context=context[:5000])
     messages = [SystemMessage(content=system_prompt)]
     messages.extend(convert_to_messages(history))
-    messages.append(HumanMessage(content=question))
+    messages.append(HumanMessage(content=question)) 
     response = llm.invoke(messages)
     return response.content, docs

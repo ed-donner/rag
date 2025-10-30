@@ -1,2 +1,0 @@
-# dkisselev-zz RAG implementation
-
